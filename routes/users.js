@@ -1,29 +1,10 @@
 const express = require('express')
 const passport = require('passport')
 const LocalStrategy = require('passport-local').Strategy
-const con_to_db = require('../db/mysqldb')
-const bcrypt = require('bcryptjs')
+const User = require('../models/user')
+
 const router = express.Router()
 
-
-class User{
-    constructor(username, password, email, name){
-        this.username = username
-        this.password = password
-        this.email = email
-        this.name = name
-    }
-    createUser(newUser, callback){
-    bcrypt.genSalt(10, function(err, salt) {
-        bcrypt.hash(newUser.password, salt, function(err, hash) {
-            newUser.password = hash
-            con_to_db.query(`INSERT INTO users (username, password, email, name) VALUES ('${newUser.username}','${newUser.password}','${newUser.email}','${newUser.name}')`, (err, result) => {
-                if(err) throw err
-            })
-        })
-    })
-}
-}
 //Register
 router.get('/register', function(req, res){
     res.render('register')
@@ -69,42 +50,24 @@ router.post('/register', function(req, res){
 });
 
 passport.use(new LocalStrategy(
-    function(username, password, done) {
-        con_to_db.query(`SELECT * FROM users WHERE username = '${username}'`, (err, result) => {
-            if(err)
-            {
-                return done(err)           
+    function(username, password, done) {    
+        User.getUserByUsername(username, function(err, user){
+            if(err)throw err
+            console.log(user.password)
+            if(!user){
+                return done(null, false, {message: 'Unknown User'})
             }
-            if(!user)
-            {
-                return done(null,false,{message: 'Incorrect user name'})         
-            }
-            let candidatePassword = result[0].password;
-            (candidatePassword, hash, callback) => {
-                bcrypt.compare(candidatePassword, hash, function(err, isMatch) {
-                    if(err) throw err
-                    callback(null, isMatch)
-                })
-            }
-            return done(null,user)
+            User.comparePassword(password, user.password, function(err, isMatch){
+                if(err) throw err
+                if(isMatch){
+                    return done(null, user)
+                } else{
+                    return done(null, false, {message:'Invalid Password'})
+                }
+            })
         })
-        
-    // User.getUserByUsername(username, function(err, user){
-    //     if(err)throw err
-    //     console.log(user.password)
-    //     if(!user){
-    //         return done(null, false, {message: 'Unknown User'})
-    //     }
-    //     User.comparePassword(password, user.password, function(err, isMatch){
-    //         if(err) throw err
-    //         if(isMatch){
-    //             return done(null, user)
-    //         } else{
-    //             return done(null, false, {message:'Invalid Password'})
-    //         }
-    //     })
-    })
-)
+    }
+))
 
 passport.serializeUser((user, done) => {
     console.log(`Blyat ${user.id}`)
@@ -112,12 +75,9 @@ passport.serializeUser((user, done) => {
 })
 
 passport.deserializeUser((id, done) => {
-    con_to_db.query(`SELECT * FROM users WHERE id = '${id}'`, (err, result) => {
-        done(err, result[0])
+    User.getUserById(id, (err, user) => {
+        done(err, user)
     })
-    // User.getUserById(id, function(err, user) {
-    //   done(err, user)
-    // })
 })
 
 router.post('/login',
